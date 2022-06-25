@@ -1,0 +1,30 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/decks/draw": {
+            "get": {
+                "description": "Endpoint for connecting to a topic",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "/chat"
+                ],
+                "summary": "Subscribe to a topic",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id",
+                        "name": "topic",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        }
+    }
+}

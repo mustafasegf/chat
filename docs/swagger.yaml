@@ -1,0 +1,19 @@
+info:
+  contact: {}
+paths:
+  /decks/draw:
+    get:
+      description: Endpoint for connecting to a topic
+      parameters:
+      - description: id
+        in: query
+        name: topic
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Subscribe to a topic
+      tags:
+      - /chat
+swagger: "2.0"
