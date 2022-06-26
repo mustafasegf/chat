@@ -9,6 +9,8 @@ import (
 	"github.com/mustafasegf/chat/pkg/chat"
 )
 
+var BrokerNotConnectedErr = fmt.Errorf("broker is not connected")
+
 func NewConn(brokers []string) (consumer sarama.Consumer, producer sarama.SyncProducer, broker *sarama.Broker, err error) {
 	config := sarama.NewConfig()
 	config.ClientID = "chat-client"
@@ -19,6 +21,7 @@ func NewConn(brokers []string) (consumer sarama.Consumer, producer sarama.SyncPr
 	if err != nil {
 		return
 	}
+
 	producer, err = sarama.NewSyncProducer(brokers, config)
 	if err != nil {
 		return
@@ -35,9 +38,8 @@ func NewConn(brokers []string) (consumer sarama.Consumer, producer sarama.SyncPr
 		return
 	}
 	if !ok {
-		err = fmt.Errorf("broker is not connected")
+		err = BrokerNotConnectedErr
 	}
-
 	return
 }
 
@@ -104,10 +106,6 @@ func (repo *repo) CreateTopic(topic string) (err error) {
 		Timeout: 10 * time.Second,
 	}
 
-	fmt.Printf("Creating topic %s\n\n", topic)
-	fmt.Printf("repo %#v\n\n", repo)
-	fmt.Printf("req %#v\n\n", req)
-
 	repo.broker.CreateTopics(req)
 	return
 }
@@ -129,7 +127,7 @@ func (repo *repo) Subscribe(topic string) (consumers chan chat.Message, errors c
 				var chatMsg chat.Message
 				json.Unmarshal(msg.Value, &chatMsg)
 				chatMsg.Key = string(msg.Key)
-        chatMsg.CreatedAt = msg.Timestamp
+				chatMsg.CreatedAt = msg.Timestamp
 				consumers <- chatMsg
 
 			case err := <-consumer.Errors():

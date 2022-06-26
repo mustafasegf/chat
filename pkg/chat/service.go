@@ -45,9 +45,7 @@ func (service *service) SendMessage(topic string, rawMessage string) (res Messag
 }
 
 func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string) {
-	defer func() {
-		cancle()
-	}()
+	defer cancle()
 
 	for {
 		select {
@@ -87,9 +85,7 @@ func (service *service) WriteMessage(ctx context.Context, c *websocket.Conn, top
 }
 
 func (service *service) PingClient(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc) {
-	defer func() {
-		cancle()
-	}()
+	defer cancle()
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 

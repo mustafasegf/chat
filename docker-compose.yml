@@ -8,12 +8,12 @@
         dockerfile: build/docker/Dockerfile.dev
       },
       ports: ["${PORT}:${PORT}"],
-      depends_on: ["db"],
+      depends_on: ["redpanda"],
       environment: [],
       networks: ["chat"],
     },
     redpanda: {
-     image: docker.redpanda.com/vectorized/redpanda:v22.1.4,
+     image: vectorized/redpanda:v22.1.4,
       container_name: redpanda-chat,
       command: [
         "redpanda",

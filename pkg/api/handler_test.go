@@ -18,7 +18,6 @@ import (
 func init() {
 	godotenv.Load("../../.env")
 	rand.Seed(time.Now().UTC().UnixNano())
-	godotenv.Load()
 	logger.SetLogger()
 }
 
