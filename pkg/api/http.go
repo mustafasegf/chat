@@ -85,7 +85,6 @@ func (s *Server) SetupRouter() {
 // @Router /chat/topic [get]
 func (h *Handler) Subscribe(c *websocket.Conn) {
 	topic := c.Query("topic")
-	zap.L().Info("Subscribing to topic", zap.String("topic", topic))
 
 	if topic == "" {
 		b, err := json.Marshal(fiber.Map{"message": "topic can't be empty"})
@@ -98,17 +97,15 @@ func (h *Handler) Subscribe(c *websocket.Conn) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-  go h.Service.ReadMessage(ctx, c, topic)
+	go h.Service.ReadMessage(ctx, c, cancel, topic)
 	go h.Service.WriteMessage(ctx, c, topic)
 	go h.Service.PingClient(ctx, c, cancel)
 
 	for {
 		select {
 		case <-ctx.Done():
-			zap.L().Info("Closing connection", zap.String("topic", topic))
 			c.Close()
 			return
 		}
 	}
 }
-

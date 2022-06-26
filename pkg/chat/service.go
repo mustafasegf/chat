@@ -12,7 +12,7 @@ import (
 
 type Service interface {
 	SendMessage(topic string, message string) (res Message, status int, err error)
-	ReadMessage(ctx context.Context, c *websocket.Conn, topic string)
+	ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string)
 	WriteMessage(ctx context.Context, c *websocket.Conn, topic string)
 	PingClient(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc)
 }
@@ -44,7 +44,11 @@ func (service *service) SendMessage(topic string, rawMessage string) (res Messag
 	return
 }
 
-func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, topic string) {
+func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string) {
+	defer func() {
+		cancle()
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -52,12 +56,12 @@ func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, topi
 		default:
 			mt, msg, err := c.ReadMessage()
 			if err != nil {
-				break
+				return
 			}
 			if mt == websocket.TextMessage {
 				service.SendMessage(topic, string(msg))
 			} else if mt == websocket.CloseMessage {
-				ctx.Done()
+				return
 			}
 		}
 	}
@@ -65,17 +69,14 @@ func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, topi
 
 func (service *service) WriteMessage(ctx context.Context, c *websocket.Conn, topic string) {
 	consumer, errors, err := service.repo.Subscribe(topic)
-	go func() {
-    ctx.Done()
-  }()
-  for {
+	for {
 		select {
 		case <-ctx.Done():
 			return
 		case ans := <-consumer:
 			b, _ := json.Marshal(ans)
 			if err = c.WriteMessage(websocket.TextMessage, b); err != nil {
-				break
+				return
 			}
 		case err := <-errors:
 			b, _ := json.Marshal(err)
@@ -86,4 +87,21 @@ func (service *service) WriteMessage(ctx context.Context, c *websocket.Conn, top
 }
 
 func (service *service) PingClient(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc) {
+	defer func() {
+		cancle()
+	}()
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.SetWriteDeadline(time.Now().Add(time.Second * 15))
+			if err := c.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
 }
