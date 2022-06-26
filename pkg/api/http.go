@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 
 	"github.com/Shopify/sarama"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/websocket/v2"
 	"github.com/mustafasegf/chat/docs"
 	"github.com/mustafasegf/chat/internal/logger"
 	"github.com/mustafasegf/chat/pkg/chat"
@@ -27,7 +30,7 @@ func MakeServer(consumer sarama.Consumer, producer sarama.SyncProducer, broker *
 		Router:   r,
 		Consumer: consumer,
 		Producer: producer,
-    Broker:   broker,
+		Broker:   broker,
 	}
 	return server
 }
@@ -71,37 +74,41 @@ func (s *Server) SetupRouter() {
 	service := chat.NewService(repo)
 	handler := NewHandler(service)
 
-	s.Router.Get("/chat/subscribe", handler.Subscribe)
+	s.Router.Get("/chat/subscribe", websocket.New(handler.Subscribe))
 }
 
 // @Summary Subscribe to a topic
 // @Description Endpoint for connecting to a topic
 // @Tags /chat
 // @Produce json
-// @Param topic query string true "id"
+// @Param topic query string true "topic"
 // @Router /chat/topic [get]
-func (h *Handler) Subscribe(c *fiber.Ctx) error {
+func (h *Handler) Subscribe(c *websocket.Conn) {
 	topic := c.Query("topic")
+	zap.L().Info("Subscribing to topic", zap.String("topic", topic))
 
 	if topic == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "topic can't be empty",
-		})
+		b, err := json.Marshal(fiber.Map{"message": "topic can't be empty"})
+		if err != nil {
+			zap.L().Error("Failed to marshal error message", zap.Error(err))
+		}
+		c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, string(b)))
+		c.Close()
+		return
 	}
 
-	message := c.Query("message")
-	if message == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "message can't be empty",
-		})
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+  go h.Service.ReadMessage(ctx, c, topic)
+	go h.Service.WriteMessage(ctx, c, topic)
+	go h.Service.PingClient(ctx, c, cancel)
 
-	res, status, err := h.Service.SendMessage(topic, message)
-	if err != nil {
-		return c.Status(status).JSON(fiber.Map{
-			"message": err.Error(),
-		})
+	for {
+		select {
+		case <-ctx.Done():
+			zap.L().Info("Closing connection", zap.String("topic", topic))
+			c.Close()
+			return
+		}
 	}
-
-	return c.JSON(res)
 }
+

@@ -1,6 +1,7 @@
 package redpanda
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -108,5 +109,34 @@ func (repo *repo) CreateTopic(topic string) (err error) {
 	fmt.Printf("req %#v\n\n", req)
 
 	repo.broker.CreateTopics(req)
+	return
+}
+
+func (repo *repo) Subscribe(topic string) (consumers chan chat.Message, errors chan error, err error) {
+	consumers = make(chan chat.Message)
+	errors = make(chan error)
+
+	partitions, _ := repo.consumer.Partitions(topic)
+	consumer, err := repo.consumer.ConsumePartition(topic, partitions[0], sarama.OffsetOldest)
+	if err != nil {
+		return
+	}
+
+	go func(topic string, consumer sarama.PartitionConsumer) {
+		for {
+			select {
+			case msg := <-consumer.Messages():
+				var chatMsg chat.Message
+				json.Unmarshal(msg.Value, &chatMsg)
+				chatMsg.Key = string(msg.Key)
+        chatMsg.CreatedAt = msg.Timestamp
+				consumers <- chatMsg
+
+			case err := <-consumer.Errors():
+				errors <- err
+			}
+		}
+	}(topic, consumer)
+
 	return
 }
