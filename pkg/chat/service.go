@@ -15,10 +15,22 @@ type Service interface {
 	ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string)
 	WriteMessage(ctx context.Context, c *websocket.Conn, topic string)
 	PingClient(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc)
+	CheckAndCreateTopic(topic string) (err error)
 }
 
 type service struct {
 	repo Repo
+}
+
+func (service *service) CheckAndCreateTopic(topic string) (err error) {
+	ok, err := service.repo.CheckTopic(topic)
+	if !ok {
+		err = service.repo.CreateTopic(topic)
+		if err != nil {
+			return
+		}
+	}
+	return
 }
 
 func NewService(repo Repo) Service {

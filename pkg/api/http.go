@@ -95,6 +95,12 @@ func (h *Handler) Subscribe(c *websocket.Conn) {
 		c.Close()
 		return
 	}
+	if err := h.Service.CheckAndCreateTopic(topic); err != nil {
+		zap.L().Error("Failed to check and create topic", zap.Error(err))
+		c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, err.Error()))
+		c.Close()
+		return
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go h.Service.ReadMessage(ctx, c, cancel, topic)

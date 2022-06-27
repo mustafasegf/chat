@@ -58,18 +58,6 @@ func NewRepository(consumer sarama.Consumer, producer sarama.SyncProducer, broke
 }
 
 func (repo *repo) SendMessage(topic string, key string, message chat.Message) (err error) {
-	ok, err := repo.CheckTopic(topic)
-	if !ok {
-		err = repo.CreateTopic(topic)
-		if err != nil {
-			return
-		}
-	}
-
-	if err != nil {
-		return
-	}
-
 	producerMessage := &sarama.ProducerMessage{
 		Topic: topic,
 		Key:   sarama.ByteEncoder(key),
