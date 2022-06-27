@@ -34,6 +34,15 @@ func TestMain(m *testing.M) {
 	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "vectorized/redpanda",
 		Tag:        "v22.1.4",
+		Hostname:   "redpanda",
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8081/tcp":  {{HostPort: "8081/tcp"}},
+			"8082/tcp":  {{HostPort: "8082/tcp"}},
+			"9092/tcp":  {{HostPort: "9092/tcp"}},
+			"28082/tcp": {{HostPort: "28082/tcp"}},
+			"29092/tcp": {{HostPort: "29092/tcp"}},
+		},
+		ExposedPorts: []string{"8081/tcp", "8082/tcp", "9092/tcp", "28082/tcp", "29092/tcp"},
 		Cmd: []string{
 			"redpanda",
 			"start",
@@ -65,10 +74,10 @@ func TestMain(m *testing.M) {
 	zap.L().Info("Connecting to database on: " + port)
 
 	resource.Expire(120)
-	pool.MaxWait = 10 * time.Second
-
+	pool.MaxWait = 120 * time.Second
+  
 	if err := pool.Retry(func() (err error) {
-		consumer, producer, broker, err = NewConn([]string{"localhost:" + port})
+    consumer, producer, broker, err = NewConn([]string{"localhost:" + port})
 		if err != nil {
 			zap.L().Warn("Could not connect to database", zap.Error(err))
 			return err
