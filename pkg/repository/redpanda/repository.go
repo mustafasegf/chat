@@ -49,7 +49,7 @@ type repo struct {
 	broker   *sarama.Broker
 }
 
-func NewRepository(consumer sarama.Consumer, producer sarama.SyncProducer, broker *sarama.Broker) chat.Repo {
+func NewRepo(consumer sarama.Consumer, producer sarama.SyncProducer, broker *sarama.Broker) chat.Repo {
 	return &repo{
 		consumer: consumer,
 		producer: producer,
@@ -57,44 +57,55 @@ func NewRepository(consumer sarama.Consumer, producer sarama.SyncProducer, broke
 	}
 }
 
-func (repo *repo) SendMessage(topic string, key string, message chat.Message) (err error) {
-	producerMessage := &sarama.ProducerMessage{
-		Topic: topic,
-		Key:   sarama.ByteEncoder(key),
-		Value: sarama.StringEncoder(message.Text),
-	}
-
-	_, _, err = repo.producer.SendMessage(producerMessage)
-	return
-}
-
-func (repo *repo) CheckTopic(topic string) (bool, error) {
-	topics, err := repo.consumer.Topics()
-	if err != nil {
-		return false, err
-	}
-	for _, t := range topics {
-		if t == topic {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (repo *repo) CreateTopic(topic string) (err error) {
-	detail := &sarama.TopicDetail{
-		NumPartitions:     1,
-		ReplicationFactor: 1,
-	}
-
 	req := &sarama.CreateTopicsRequest{
 		TopicDetails: map[string]*sarama.TopicDetail{
-			topic: detail,
+			topic: {
+				NumPartitions:     1,
+				ReplicationFactor: 1,
+			},
 		},
 		Timeout: 10 * time.Second,
 	}
 
-	repo.broker.CreateTopics(req)
+	_, err = repo.broker.CreateTopics(req)
+	return
+}
+
+func (repo *repo) CheckTopic(topic string) (ok bool, err error) {
+	ok = false
+	var topics []string
+
+	topics, err = repo.consumer.Topics()
+	if err != nil {
+		return
+	}
+	for _, t := range topics {
+		if t == topic {
+			ok = true
+			return
+		}
+	}
+	return
+}
+
+func (repo *repo) DeleteTopic(topic string) (err error) {
+	req := &sarama.DeleteTopicsRequest{
+		Topics:  []string{topic},
+		Timeout: 10 * time.Second,
+	}
+	_, err = repo.broker.DeleteTopics(req)
+	return
+}
+
+func (repo *repo) SendMessage(topic, key, text string) (err error) {
+	producerMessage := &sarama.ProducerMessage{
+		Topic: topic,
+		Key:   sarama.ByteEncoder(key),
+		Value: sarama.StringEncoder(text),
+	}
+
+	_, _, err = repo.producer.SendMessage(producerMessage)
 	return
 }
 
