@@ -1,6 +1,7 @@
 package redpanda
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -8,9 +9,9 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/mustafasegf/chat/internal/logger"
-	"github.com/mustafasegf/chat/pkg/chat"
 	"github.com/ory/dockertest"
 	"github.com/ory/dockertest/docker"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -75,11 +76,10 @@ func TestMain(m *testing.M) {
 
 	resource.Expire(120)
 	pool.MaxWait = 120 * time.Second
-  
+
 	if err := pool.Retry(func() (err error) {
-    consumer, producer, broker, err = NewConn([]string{"localhost:" + port})
+		consumer, producer, broker, err = NewConn([]string{"localhost:" + port})
 		if err != nil {
-			zap.L().Warn("Could not connect to database", zap.Error(err))
 			return err
 		}
 		return
@@ -89,6 +89,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
+	// time.Sleep(time.Second * 10)
 	if err := pool.Purge(resource); err != nil {
 		zap.L().Fatal("Could not purge resource", zap.Error(err))
 	}
@@ -96,49 +97,69 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestRepository_SendMessage(t *testing.T) {
-	type fields struct {
-		consumer sarama.Consumer
-		producer sarama.SyncProducer
-		broker   *sarama.Broker
+func TestTopic(t *testing.T) {
+	repo := NewRepo(consumer, producer, broker)
+	t.Run("check no topic", func(t *testing.T) {
+		topic := randSeq(10)
+		ok, err := repo.CheckTopic(topic)
+		assert.False(t, ok, expStr(false, ok))
+		assert.NoError(t, err, expStr("<err>", err))
+	})
+
+	t.Run("check create", func(t *testing.T) {
+		topic := randSeq(10)
+		err := repo.CreateTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+
+		ok, err := repo.CheckTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+		assert.True(t, ok, expStr(true, ok))
+	})
+
+	t.Run("check delete", func(t *testing.T) {
+		topic := randSeq(10)
+		err := repo.CreateTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+
+		ok, err := repo.CheckTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+		assert.True(t, ok, expStr(true, ok))
+
+		err = repo.DeleteTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+
+		ok, err = repo.CheckTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+		assert.False(t, ok, expStr(false, ok))
+	})
+}
+
+func TestMessage(t *testing.T) {
+	repo := NewRepo(consumer, producer, broker)
+	t.Run("send message", func(t *testing.T) {
+		topic := randSeq(10)
+		err := repo.CreateTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+
+		ok, err := repo.CheckTopic(topic)
+		assert.NoError(t, err, expStr("<err>", err))
+		assert.True(t, ok, expStr(true, ok))
+
+		key := randSeq(6)
+		err = repo.SendMessage(topic, key, "test")
+		assert.NoError(t, err, expStr("<err>", err))
+	})
+}
+
+func randSeq(n int) string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
 	}
-	type args struct {
-		topic   string
-		key     string
-		message chat.Message
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "success",
-			fields: fields{
-				consumer: consumer,
-				producer: producer,
-				broker:   broker,
-			},
-			args: args{
-				topic: "test",
-				key:   "test",
-				message: chat.Message{
-					Key:       "test",
-					Text:      "test",
-					CreatedAt: time.Now(),
-				},
-			},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := NewRepository(tt.fields.consumer, tt.fields.producer, tt.fields.broker)
-			zap.L().Info("Sending message", zap.String("topic", tt.args.topic), zap.String("key", tt.args.key), zap.String("message", tt.args.message.Text))
-			if err := r.SendMessage(tt.args.topic, tt.args.key, tt.args.message); (err != nil) != tt.wantErr {
-				t.Errorf("Repository.SendMessage() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
+	return string(b)
+}
+
+func expStr(exp, got interface{}) string {
+	return fmt.Sprintf("Expected %v but got %v", exp, got)
 }
