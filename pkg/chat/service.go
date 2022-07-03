@@ -8,29 +8,19 @@ import (
 
 	"github.com/gofiber/websocket/v2"
 	gonanoid "github.com/matoous/go-nanoid/v2"
+	"go.uber.org/zap"
 )
 
 type Service interface {
-	SendMessage(topic string, message string) (res Message, status int, err error)
-	ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string)
-	WriteMessage(ctx context.Context, c *websocket.Conn, topic string)
-	PingClient(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc)
+	SendMessage(topic string, rawMessage string) (status int, err error)
+	ReadMessage(ctx context.Context, cancle context.CancelFunc, c *websocket.Conn, topic string)
+	WriteMessage(ctx context.Context, cancel context.CancelFunc, c *websocket.Conn, topic string)
+	PingClient(ctx context.Context, cancel context.CancelFunc, c *websocket.Conn)
 	CheckAndCreateTopic(topic string) (err error)
 }
 
 type service struct {
 	repo Repo
-}
-
-func (service *service) CheckAndCreateTopic(topic string) (err error) {
-	ok, err := service.repo.CheckTopic(topic)
-	if !ok {
-		err = service.repo.CreateTopic(topic)
-		if err != nil {
-			return
-		}
-	}
-	return
 }
 
 func NewService(repo Repo) Service {
@@ -39,24 +29,21 @@ func NewService(repo Repo) Service {
 	}
 }
 
-func (service *service) SendMessage(topic string, rawMessage string) (res Message, status int, err error) {
+func (service *service) SendMessage(topic string, rawMessage string) (status int, err error) {
 	status = http.StatusOK
 	id, err := gonanoid.New()
 	if err != nil {
 		return
 	}
 
-	message := Message{
-		Text:      rawMessage,
-		CreatedAt: time.Now(),
+	err = service.repo.SendMessage(topic, id, rawMessage)
+	if err != nil {
+		status = websocket.CloseInternalServerErr
 	}
-
-	err = service.repo.SendMessage(topic, id, message)
-	res = message
 	return
 }
 
-func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc, topic string) {
+func (service *service) ReadMessage(ctx context.Context, cancle context.CancelFunc, c *websocket.Conn, topic string) {
 	defer cancle()
 
 	for {
@@ -77,11 +64,23 @@ func (service *service) ReadMessage(ctx context.Context, c *websocket.Conn, canc
 	}
 }
 
-func (service *service) WriteMessage(ctx context.Context, c *websocket.Conn, topic string) {
+func (service *service) WriteMessage(ctx context.Context, cancle context.CancelFunc, c *websocket.Conn, topic string) {
+	defer cancle()
 	consumer, errors, err := service.repo.Subscribe(topic)
+	if err != nil {
+		return
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute * 15):
+			zap.L().Info("deleting topic", zap.String("topic", topic))
+			if err = service.repo.DeleteTopic(topic); err != nil {
+				zap.L().Error("Error deleting topic", zap.Error(err))
+			}
+
 			return
 		case ans := <-consumer:
 			b, _ := json.Marshal(ans)
@@ -96,7 +95,7 @@ func (service *service) WriteMessage(ctx context.Context, c *websocket.Conn, top
 	}
 }
 
-func (service *service) PingClient(ctx context.Context, c *websocket.Conn, cancle context.CancelFunc) {
+func (service *service) PingClient(ctx context.Context, cancle context.CancelFunc, c *websocket.Conn) {
 	defer cancle()
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
@@ -112,4 +111,15 @@ func (service *service) PingClient(ctx context.Context, c *websocket.Conn, cancl
 			}
 		}
 	}
+}
+
+func (service *service) CheckAndCreateTopic(topic string) (err error) {
+	ok, err := service.repo.CheckTopic(topic)
+	if !ok {
+		err = service.repo.CreateTopic(topic)
+		if err != nil {
+			return
+		}
+	}
+	return
 }

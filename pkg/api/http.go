@@ -70,7 +70,7 @@ func (s *Server) SetupRouter() {
 	s.Router.Use(logger.MiddleWare())
 	s.Router.Use(recover.New())
 
-	repo := redpanda.NewRepository(s.Consumer, s.Producer, s.Broker)
+	repo := redpanda.NewRepo(s.Consumer, s.Producer, s.Broker)
 	service := chat.NewService(repo)
 	handler := NewHandler(service)
 
@@ -103,9 +103,9 @@ func (h *Handler) Subscribe(c *websocket.Conn) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go h.Service.ReadMessage(ctx, c, cancel, topic)
-	go h.Service.WriteMessage(ctx, c, topic)
-	go h.Service.PingClient(ctx, c, cancel)
+	go h.Service.ReadMessage(ctx, cancel, c, topic)
+	go h.Service.WriteMessage(ctx, cancel, c, topic)
+	go h.Service.PingClient(ctx, cancel, c)
 
 	for {
 		select {
